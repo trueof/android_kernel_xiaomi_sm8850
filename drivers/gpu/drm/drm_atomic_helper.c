@@ -589,9 +589,11 @@ static int drm_atomic_check_valid_clones(struct drm_atomic_state *state,
 
 		if ((crtc_state->encoder_mask & drm_enc->possible_clones) !=
 		    crtc_state->encoder_mask) {
-			DRM_DEBUG("crtc%d failed valid clone check for mask 0x%x\n",
-				  crtc->base.id, crtc_state->encoder_mask);
-			return -EINVAL;
+			drm_warn_once(crtc->dev,
+				      "bypassing clone validation for crtc%d mask 0x%x encoder%d possible_clones 0x%x\n",
+				      crtc->base.id, crtc_state->encoder_mask,
+				      drm_enc->base.id, drm_enc->possible_clones);
+			continue;
 		}
 	}
 
