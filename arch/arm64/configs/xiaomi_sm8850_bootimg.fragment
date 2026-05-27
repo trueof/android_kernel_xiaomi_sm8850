@@ -1,0 +1,2 @@
+# Built into the boot image for Xiaomi SM8850 stock vendor_dlkm compatibility.
+CONFIG_RFKILL=y
