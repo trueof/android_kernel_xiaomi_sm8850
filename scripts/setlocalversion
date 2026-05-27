@@ -205,4 +205,14 @@ elif [ "${LOCALVERSION+set}" != "set" ]; then
 	scm_version="$(scm_version --short)"
 fi
 
+# When CONFIG_LOCALVERSION_AUTO is disabled and a custom CONFIG_LOCALVERSION is
+# set, treat CONFIG_LOCALVERSION as the complete vendor-visible release suffix.
+# Kleaf writes its Android release/KMI/git stamp into OUT_DIR/localversion; this
+# keeps Kokuban-style branded builds from appending that generated stamp before
+# the configured local version.
+if [ -n "${config_localversion}" ] &&
+	! grep -q "^CONFIG_LOCALVERSION_AUTO=y$" include/config/auto.conf; then
+	file_localversion=
+fi
+
 echo "${KERNELVERSION}${file_localversion}${config_localversion}${LOCALVERSION}${scm_version}"
