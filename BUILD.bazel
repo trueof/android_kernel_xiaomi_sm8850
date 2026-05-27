@@ -62,6 +62,15 @@ _GKI_AARCH64_BOOT_IMAGE_SIZES = {
     "gz": "47185920",
 }
 
+_XIAOMI_SM8850_BOOT_IMAGE_SIZES = {
+    # Xiaomi OS3.0.309.0.WBLCNXM ships a 96 MiB boot partition image.
+    # Keep every generated Xiaomi SM8850 boot variant at that partition size so
+    # the AVB hash footer is placed where the bootloader expects it for flashing.
+    "": "100663296",
+    "lz4": "100663296",
+    "gz": "100663296",
+}
+
 _GKI_X86_64_BOOT_IMAGE_SIZES = {
     "": "67108864",
 }
@@ -307,19 +316,20 @@ common_kernel(
         ":test_mappings_zip",
         ":tests_zip_arm64",
     ],
-    gki_boot_img_sizes = _GKI_AARCH64_BOOT_IMAGE_SIZES,
+    gki_boot_img_sizes = _XIAOMI_SM8850_BOOT_IMAGE_SIZES,
     gki_system_dlkm_modules = ":xiaomi_sm8850_gki_system_dlkm_modules_arm64",
     kcflags = COMMON_KCFLAGS,
     kmi_enforced = True,
     kmi_symbol_list = "gki/aarch64/symbols/base",
-    kmi_symbol_list_strict_mode = True,
+    # Xiaomi stock vendor_dlkm modules need the untrimmed GKI surface.
+    kmi_symbol_list_strict_mode = False,
     make_goals = _GKI_AARCH64_MAKE_GOALS,
     makefile = ":Makefile",
     module_implicit_outs = _XIAOMI_SM8850_GKI_MODULES_ARM64 + get_kunit_modules_list("arm64"),
     post_defconfig_fragments = ["arch/arm64/configs/xiaomi_sm8850_bootimg.fragment"],
-    protected_module_names_list = ":xiaomi_sm8850_gki_aarch64_protected_module_names",
+    protected_module_names_list = None,
     system_dlkm_extra_archive_files = [":generate_gki_module_info_arm64"],
-    trim_nonlisted_kmi = True,
+    trim_nonlisted_kmi = False,
     visibility = ["//visibility:public"],
 )
 
