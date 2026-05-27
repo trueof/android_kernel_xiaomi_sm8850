@@ -77,6 +77,7 @@
 #include <trace/hooks/user.h>
 #include <trace/hooks/gzvm.h>
 #include <trace/hooks/usb.h>
+#include <trace/hooks/dmv_debug.h>
 
 /*
  * Export tracepoints that act as a bare tracehook (ie: have no trace event
