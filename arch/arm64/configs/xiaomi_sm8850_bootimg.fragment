@@ -4,3 +4,4 @@ CONFIG_LOCALVERSION="-android16-5-LokumKernel"
 
 # Built into the boot image for Xiaomi SM8850.
 CONFIG_RFKILL=y
+CONFIG_KSU=y
