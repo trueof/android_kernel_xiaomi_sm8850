@@ -1,5 +1,5 @@
 # Kokuban-style real UTS_RELEASE branding for Xiaomi SM8850.
-CONFIG_LOCALVERSION="-android16-5-LokumKernel"
+CONFIG_LOCALVERSION="-android16-5-LokumKernel-Droidspaces"
 # CONFIG_LOCALVERSION_AUTO is not set
 
 # Built into the boot image for Xiaomi SM8850.

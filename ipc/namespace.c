@@ -16,6 +16,7 @@
 #include <linux/user_namespace.h>
 #include <linux/proc_ns.h>
 #include <linux/sched/task.h>
+#include <linux/export.h>
 
 #include "util.h"
 
@@ -207,6 +208,7 @@ void put_ipc_ns(struct ipc_namespace *ns)
 			schedule_work(&free_ipc_work);
 	}
 }
+EXPORT_SYMBOL_GPL(put_ipc_ns);
 
 static inline struct ipc_namespace *to_ipc_ns(struct ns_common *ns)
 {

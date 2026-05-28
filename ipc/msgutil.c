@@ -15,6 +15,7 @@
 #include <linux/proc_ns.h>
 #include <linux/uaccess.h>
 #include <linux/sched.h>
+#include <linux/export.h>
 
 #include "util.h"
 
@@ -33,6 +34,7 @@ struct ipc_namespace init_ipc_ns = {
 	.ns.ops = &ipcns_operations,
 #endif
 };
+EXPORT_SYMBOL_GPL(init_ipc_ns);
 
 struct msg_msgseg {
 	struct msg_msgseg *next;
