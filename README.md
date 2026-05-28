@@ -1,3 +1,11 @@
+# LokumKernel SM8850 Android Kernel Source
+
+This public source branch backs LokumKernel_SM8850 for Xiaomi Pandora-class SM8850 devices. The current experimental lane is `6.12.38-android16-5-lokumkernel-ksun-susfs-exp1`; the stable recovery lane is `6.12.23-android16-5-lokumkernel-ksun-susfs-rc1`.
+
+Read `LOKUMKERNEL.md` for the project-specific build layout, KernelSU Next/SUSFS pins, and release workflow. The Android common kernel patch-submission notes below are preserved from the upstream source tree.
+
+---
+
 # How do I submit patches to Android Common Kernels
 
 1. BEST: Make all of your changes to upstream Linux. If appropriate, backport to the stable releases.

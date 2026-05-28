@@ -25,12 +25,12 @@ pinned source instead of vendoring its full history into the common kernel tree.
 - Firmware base: Xiaomi Pandora `OS3.0.309.0.WBLCNXM`
 - Experimental kernel base: Android common `android16-6.12-2025-09` / Linux `6.12.38`
 - Kernel release string: `6.12.38-android16-5-LokumKernel`
-- KernelSU Next branch/commit: `pandora/gki-2025-09-ksunext-dev-susfs` / `985f8bcb`
+- KernelSU Next integration branch/commit: `lokum/dev-susfs-c2013a15` / `9a4f512f`
 - SUSFS source commit: `75a613850178234c6c7595d1db8211716a011a2e`
 - SUSFS version: `v2.1.0`
 - Boot image partition size: `100663296` bytes
 
-This branch is experimental. Keep the stable rc3 branch/release on `6.12.23` until this 6.12.38 build passes runtime testing on-device.
+This branch is experimental. Keep the stable rc1 branch/release on `6.12.23` as the recovery path until this 6.12.38 build passes runtime testing on-device.
 
 ## Build and release
 
