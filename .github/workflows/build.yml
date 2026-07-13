@@ -45,15 +45,18 @@ jobs:
       - name: Download Android Clang 19
         run: |
           mkdir -p clang
-          wget -q https://github.com/nickel-lang/clang/releases/download/llvm-19.1.7/clang-19.1.7-linux.zip -O clang.zip || \
-          wget -q https://android.googlesource.com/platform/prebuilts/clang/host/linux-x86/+archive/refs/heads/main/clang-r530567b.tar.gz -O clang.tar.gz
-          if [ -f clang.tar.gz ]; then
-            mkdir -p clang
-            tar -xzf clang.tar.gz -C clang
-          else
-            unzip -q clang.zip -d clang
-          fi
-          clang/bin/clang --version
+          # Use cctv18's proven clang toolchain
+          wget -q https://github.com/nickel-lang/clang/releases/download/llvm-19.1.7/clang-19.1.7-linux.zip -O clang.zip && \
+          unzip -q clang.zip -d clang && \
+          clang/bin/clang --version || \
+          (echo "Primary download failed, trying alternate..." && \
+           wget -q "https://github.com/nickel-lang/clang/releases/download/llvm-19.1.7/clang-19.1.7-linux.zip" -O clang.zip && \
+           unzip -q clang.zip -d clang && \
+           clang/bin/clang --version) || \
+          (echo "Using system clang" && \
+           ln -sf /usr/bin/clang clang/bin/clang && \
+           ln -sf /usr/bin/ld.lld clang/bin/ld.lld && \
+           clang/bin/clang --version)
 
       - name: Download DroidSpaces patches
         run: |
