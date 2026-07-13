@@ -107,19 +107,22 @@ jobs:
           fi
           # Remove external module Makefile (conflicts with in-tree Kbuild)
           rm -f common/drivers/kernelsu/Makefile
-          # Nuclear fix: copy uapi headers EVERYWHERE the compiler might look
-          cp common/drivers/kernelsu/include/uapi/app_profile.h common/drivers/kernelsu/policy/
-          cp common/drivers/kernelsu/include/klog.h common/drivers/kernelsu/feature/
-          cp common/drivers/kernelsu/include/klog.h common/drivers/kernelsu/core/
-          # Also create symlinks for good measure
-          ln -sf ../include/uapi common/drivers/kernelsu/policy/uapi 2>/dev/null || true
-          ln -sf ../include common/drivers/kernelsu/feature/include 2>/dev/null || true
-          ln -sf ../include common/drivers/kernelsu/core/include 2>/dev/null || true
-          # Verify
-          ls common/drivers/kernelsu/include/uapi/app_profile.h
-          ls common/drivers/kernelsu/include/klog.h
-          ls common/drivers/kernelsu/policy/app_profile.h
-          echo "KSU headers fixed"
+          # Nuclear fix: copy ALL headers to EVERY source subdirectory
+          KSU_DIR=common/drivers/kernelsu
+          for dir in core feature policy hook supercall; do
+            if [ -d "$KSU_DIR/$dir" ]; then
+              cp $KSU_DIR/include/*.h $KSU_DIR/$dir/ 2>/dev/null || true
+              cp $KSU_DIR/include/uapi/*.h $KSU_DIR/$dir/ 2>/dev/null || true
+              mkdir -p $KSU_DIR/$dir/uapi 2>/dev/null
+              cp $KSU_DIR/include/uapi/*.h $KSU_DIR/$dir/uapi/ 2>/dev/null || true
+              ln -sf ../include $KSU_DIR/$dir/include 2>/dev/null || true
+            fi
+          done
+          # Verify all headers are accessible
+          find $KSU_DIR -name "ksu.h" | head -5
+          find $KSU_DIR -name "klog.h" | head -5
+          find $KSU_DIR -name "app_profile.h" | head -5
+          echo "All KSU headers copied to source dirs"
 
       - name: Setup ccache
         run: |
