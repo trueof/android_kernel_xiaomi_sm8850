@@ -1,157 +1,305 @@
-name: Build Xiaomi SM8850 Kernel
+name: Build Xiaomi SM8850 Kernel (LokumKernel)
 
 env:
   TZ: Asia/Shanghai
+  KERNEL_VERSION: '6.12'
+  SUB_VERSION: '23'
+  ANDROID_VERSION: 'android16'
+  KERNEL_NAME: 'LokumKernel-Xiaomi-SM8850'
 
 on:
   workflow_dispatch:
     inputs:
-      features:
-        description: 'Features to enable'
-        required: false
-        type: string
-        default: 'droidspaces,bbr,network,rekernel,bbg'
+      droidspaces_enable:
+        description: 'DroidSpaces (false/standard/extend)'
+        required: true
+        type: choice
+        default: 'standard'
+        options:
+          - 'false'
+          - 'standard'
+          - 'extend'
+      bbr_enable:
+        description: 'BBR/Brutal (false/true/default)'
+        required: true
+        type: choice
+        default: 'true'
+        options:
+          - 'false'
+          - 'true'
+          - 'default'
+      better_net:
+        description: 'Network enhancements (ipset/iptables)'
+        required: true
+        type: boolean
+        default: 'true'
+      rekernel_enable:
+        description: 'Re:Kernel'
+        required: true
+        type: boolean
+        default: 'true'
+      baseband_guard:
+        description: 'Baseband guard'
+        required: true
+        type: boolean
+        default: 'true'
+      ccache_update:
+        description: 'Update ccache'
+        required: true
+        type: boolean
+        default: 'false'
 
 jobs:
   build:
     runs-on: ubuntu-latest
+    outputs:
+      ak3name: ${{ steps.create_zip.outputs.ak3name }}
+    permissions:
+      actions: write
+      contents: read
     steps:
-      - name: Setup environment
+      - name: Install deps + init toolchain
         run: |
           sudo apt-get update
-          sudo apt-get install -y --no-install-recommends binutils python3 libssl-dev libelf-dev flex bison bc pahole ccache gcc-aarch64-linux-gnu aria2c
-
-      - name: Checkout kernel source
-        uses: actions/checkout@v4
-        with:
-          ref: '6.12.23-android16-5-lokumkernel-ksun-susfs-rc1'
-          path: kernel
-          fetch-depth: 1
-
-      - name: Checkout KernelSU-Next
-        uses: actions/checkout@v4
-        with:
-          repository: pershoot/KernelSU-Next
-          ref: dev-susfs
-          path: KernelSU-Next
-          fetch-depth: 1
-
-      - name: Verify KSU symlink
-        run: |
-          ls -la kernel/drivers/kernelsu
-          ls KernelSU-Next/kernel/Kbuild
-
-      - name: Download clang toolchain + build-tools
-        run: |
-          cd kernel
-          aria2c -s16 -x16 -k1M https://github.com/cctv18/oneplus_sm8650_toolchain/releases/download/LLVM-Clang19-r536225/clang-r536225.zip -o clang.zip
+          sudo apt-get install -y --no-install-recommends binutils python3 libssl-dev libelf-dev libdw-dev flex bison bc pahole
+          
+          cd "$GITHUB_WORKSPACE"
+          mkdir -p kernel_workspace
+          cd kernel_workspace
+          
+          # ccache from cctv18
+          wget -q https://raw.githubusercontent.com/cctv18/oppo_oplus_realme_sm8850/main/lib/ccache-x86-64 -O ccache
+          sudo cp -f ccache /usr/bin/ccache && sudo chmod +x /usr/bin/ccache && rm ccache
+          
+          # Clone kernel source (LokumKernel for Xiaomi SM8850)
+          git clone --depth=1 -b 6.12.23-android16-5-lokumkernel-ksun-susfs-rc1 https://github.com/LokumKernel-SM8850/android_kernel_xiaomi_sm8850.git common &
+          
+          # Clone KernelSU-Next (for symlink)
+          git clone --depth=1 -b dev-susfs https://github.com/pershoot/KernelSU-Next.git KernelSU-Next &
+          
+          # Download clang-r536225
           mkdir -p clang19
-          unzip -q clang.zip -d clang19
-          rm -f clang.zip
+          aria2c -s16 -x16 -k1M https://github.com/cctv18/oneplus_sm8650_toolchain/releases/download/LLVM-Clang19-r536225/clang-r536225.zip -o clang.zip
+          unzip -q clang.zip -d clang19 && rm clang.zip &
+          
+          # Download Rust 1.82.0
+          mkdir -p rust
+          aria2c -s16 -x16 -k1M https://github.com/cctv18/oneplus_sm8650_toolchain/releases/download/LLVM-Clang19-r536225/rust.zip -o rust.zip
+          unzip -q rust.zip -d rust && rm rust.zip &
+          
+          # Download build-tools
           aria2c -s16 -x16 -k1M https://github.com/cctv18/oneplus_sm8650_toolchain/releases/download/LLVM-Clang19-r536225/build-tools.zip -o build-tools.zip
-          unzip -q build-tools.zip
-          rm -f build-tools.zip
+          unzip -q build-tools.zip && rm build-tools.zip &
+          
+          wait
+          echo "All tools ready"
           clang19/bin/clang --version
+          rust/bin/rustc --version
 
-      - name: Download DroidSpaces patches
+      - name: Setup ccache
         run: |
-          cd kernel
-          curl -sL "https://raw.githubusercontent.com/cctv18/oppo_oplus_realme_sm8650/main/droidspaces_patch/fix_sysvipc_kabi_6_7_8.patch" -o /tmp/fix_sysvipc_kabi.patch
-          curl -sL "https://raw.githubusercontent.com/cctv18/oppo_oplus_realme_sm8650/main/droidspaces_patch/ntsync_compat_android14-6.1.patch" -o /tmp/ntsync_compat.patch
-          curl -sL "https://raw.githubusercontent.com/cctv18/oppo_oplus_realme_sm8650/main/droidspaces_patch/disable_module_crc_check.patch" -o /tmp/disable_module_crc_check.patch
-          patch -p1 -N -F 3 < /tmp/fix_sysvipc_kabi.patch || true
-          patch -p1 -N -F 3 < /tmp/ntsync_compat.patch || true
-          patch -p1 -N -F 3 < /tmp/disable_module_crc_check.patch || true
+          cd "$GITHUB_WORKSPACE/kernel_workspace"
+          echo "CCACHE_DIR=$HOME/.ccache_lokumkernel" >> $GITHUB_ENV
+          echo "CCACHE_MAXSIZE=3G" >> $GITHUB_ENV
+          
+          mkdir -p "$HOME/.ccache_lokumkernel"
+          ccache -M 3G
+          ccache -o compression=true
+          ccache -s
+
+      - name: Apply DroidSpaces patches
+        if: inputs.droidspaces_enable != 'false'
+        run: |
+          cd "$GITHUB_WORKSPACE/kernel_workspace/common"
+          echo "Applying DroidSpaces patches for 6.12..."
+          # Use SM8850-specific patches from cctv18
+          curl -sL "https://raw.githubusercontent.com/cctv18/oppo_oplus_realme_sm8850/main/droidspaces_patch/fix_sysvipc_kabi_a16-6.12.patch" -o /tmp/fix_sysvipc.patch
+          curl -sL "https://raw.githubusercontent.com/cctv18/oppo_oplus_realme_sm8850/main/droidspaces_patch/ntsync_compat_android16-6.12.patch" -o /tmp/ntsync_compat.patch
+          curl -sL "https://raw.githubusercontent.com/cctv18/oppo_oplus_realme_sm8850/main/droidspaces_patch/fix_oplus_bsp_midas.patch" -o /tmp/fix_midas.patch
+          curl -sL "https://raw.githubusercontent.com/cctv18/oppo_oplus_realme_sm8850/main/droidspaces_patch/ddl_hit_hook.patch" -o /tmp/ddl_hook.patch
+          
+          patch -p1 -F 3 < /tmp/fix_sysvipc.patch || true
+          patch -p1 -F 3 < /tmp/ntsync_compat.patch || true
+          patch -p1 -F 3 < /tmp/fix_midas.patch || true
+          patch -p1 -F 3 < /tmp/ddl_hook.patch || true
           echo "DroidSpaces patches applied"
 
-      - name: Add DroidSpaces + optimization configs
+      - name: Add all configs
         run: |
-          cd kernel
-          cat >> arch/arm64/configs/xiaomi_sm8850_bootimg.fragment << 'EOF'
+          cd "$GITHUB_WORKSPACE/kernel_workspace/common"
           
-          # DroidSpaces container support
-          CONFIG_PID_NS=y
-          CONFIG_IPC_NS=y
-          CONFIG_SYSVIPC=y
-          CONFIG_DEVTMPFS=y
-          CONFIG_POSIX_MQUEUE=y
-          CONFIG_NETFILTER_XT_MATCH_ADDRTYPE=y
-          CONFIG_NETFILTER_XT_MATCH_RECENT=y
-          CONFIG_NTSYNC=y
-          CONFIG_TMPFS_XATTR=y
-          CONFIG_TMPFS_POSIX_ACL=y
+          # DroidSpaces configs
+          if [[ "${{ inputs.droidspaces_enable }}" != "false" ]]; then
+            echo "CONFIG_PID_NS=y" >> arch/arm64/configs/gki_defconfig
+            echo "CONFIG_IPC_NS=y" >> arch/arm64/configs/gki_defconfig
+            echo "CONFIG_SYSVIPC=y" >> arch/arm64/configs/gki_defconfig
+            echo "CONFIG_DEVTMPFS=y" >> arch/arm64/configs/gki_defconfig
+            echo "CONFIG_NAMESPACES=y" >> arch/arm64/configs/gki_defconfig
+            echo "CONFIG_POSIX_MQUEUE=y" >> arch/arm64/configs/gki_defconfig
+            echo "CONFIG_NETFILTER_XT_MATCH_ADDRTYPE=y" >> arch/arm64/configs/gki_defconfig
+            echo "CONFIG_NETFILTER_XT_TARGET_LOG=y" >> arch/arm64/configs/gki_defconfig
+            echo "CONFIG_NETFILTER_XT_MATCH_RECENT=y" >> arch/arm64/configs/gki_defconfig
+            echo "CONFIG_NTSYNC=y" >> arch/arm64/configs/gki_defconfig
+            echo "DroidSpaces: enabled"
+          fi
           
-          # O2 compile optimization
-          CONFIG_CC_OPTIMIZE_FOR_PERFORMANCE=y
+          # O2 optimization
+          echo "CONFIG_CC_OPTIMIZE_FOR_PERFORMANCE=y" >> arch/arm64/configs/gki_defconfig
+          echo "CONFIG_HEADERS_INSTALL=n" >> arch/arm64/configs/gki_defconfig
+          # Disable defconfig check
+          sed -i 's/check_defconfig//' build.config.gki
           
-          # BBR/Brutal TCP congestion algorithms
-          CONFIG_TCP_CONG_ADVANCED=y
-          CONFIG_TCP_CONG_BBR=y
-          CONFIG_TCP_CONG_CUBIC=y
-          CONFIG_TCP_CONG_BRUTAL=y
-          CONFIG_DEFAULT_TCP_CONG=cubic
+          # Mountify support
+          echo "CONFIG_TMPFS_XATTR=y" >> arch/arm64/configs/gki_defconfig
+          echo "CONFIG_TMPFS_POSIX_ACL=y" >> arch/arm64/configs/gki_defconfig
+          
+          # BBR/Brutal
+          if [[ "${{ inputs.bbr_enable }}" != "false" ]]; then
+            echo "CONFIG_TCP_CONG_ADVANCED=y" >> arch/arm64/configs/gki_defconfig
+            echo "CONFIG_TCP_CONG_BBR=y" >> arch/arm64/configs/gki_defconfig
+            echo "CONFIG_TCP_CONG_CUBIC=y" >> arch/arm64/configs/gki_defconfig
+            echo "CONFIG_TCP_CONG_BRUTAL=y" >> arch/arm64/configs/gki_defconfig
+            if [[ "${{ inputs.bbr_enable }}" == "default" ]]; then
+              echo "CONFIG_DEFAULT_TCP_CONG=bbr" >> arch/arm64/configs/gki_defconfig
+            else
+              echo "CONFIG_DEFAULT_TCP_CONG=cubic" >> arch/arm64/configs/gki_defconfig
+            fi
+          fi
           
           # Network enhancements
-          CONFIG_BPF_STREAM_PARSER=y
-          CONFIG_NETFILTER_XT_SET=y
-          CONFIG_IP_SET=y
-          CONFIG_IP_SET_MAX=65534
-          CONFIG_IP_SET_HASH_IP=y
-          CONFIG_IP_SET_HASH_NET=y
-          CONFIG_IP_SET_HASH_NETPORT=y
-          CONFIG_IP_SET_LIST_SET=y
-          CONFIG_IP6_NF_NAT=y
-          CONFIG_IP6_NF_TARGET_MASQUERADE=y
-          CONFIG_NETFILTER_XT_TARGET_MASQUERADE=y
-          CONFIG_NF_CONNTRACK_NETLINK=y
+          if [[ "${{ inputs.better_net }}" == "true" ]]; then
+            echo "CONFIG_NETFILTER_XT_SET=y" >> arch/arm64/configs/gki_defconfig
+            echo "CONFIG_IP_SET=y" >> arch/arm64/configs/gki_defconfig
+            echo "CONFIG_IP_SET_MAX=65534" >> arch/arm64/configs/gki_defconfig
+            echo "CONFIG_IP_SET_HASH_IP=y" >> arch/arm64/configs/gki_defconfig
+            echo "CONFIG_IP_SET_HASH_NET=y" >> arch/arm64/configs/gki_defconfig
+            echo "CONFIG_IP_SET_HASH_NETPORT=y" >> arch/arm64/configs/gki_defconfig
+            echo "CONFIG_IP_SET_LIST_SET=y" >> arch/arm64/configs/gki_defconfig
+            echo "CONFIG_IP6_NF_NAT=y" >> arch/arm64/configs/gki_defconfig
+            echo "CONFIG_IP6_NF_TARGET_MASQUERADE=y" >> arch/arm64/configs/gki_defconfig
+            echo "CONFIG_NETFILTER_XT_TARGET_MASQUERADE=y" >> arch/arm64/configs/gki_defconfig
+            echo "CONFIG_NF_CONNTRACK_NETLINK=y" >> arch/arm64/configs/gki_defconfig
+          fi
           
-          # Re:Kernel + Baseband guard
-          CONFIG_REKERNEL=y
-          CONFIG_BBG=y
-          EOF
-          echo "Configs added"
-
-      - name: Merge defconfig
-        run: |
-          cd kernel
-          cat arch/arm64/configs/gki_defconfig arch/arm64/configs/xiaomi_sm8850_bootimg.fragment > /tmp/merged_defconfig
-          cp /tmp/merged_defconfig arch/arm64/configs/gki_defconfig
-          echo "Defconfig merged"
-
-      - name: Fix libbpf for clang compatibility
-        run: |
-          cd kernel
-          sed -i 's/override CFLAGS += -Werror -Wall/override CFLAGS += -Wno-error -Wall/' tools/lib/bpf/Makefile
+          # Re:Kernel
+          if [[ "${{ inputs.rekernel_enable }}" == "true" ]]; then
+            echo "CONFIG_REKERNEL=y" >> arch/arm64/configs/gki_defconfig
+            echo "CONFIG_REKERNEL_NETWORK=y" >> arch/arm64/configs/gki_defconfig
+          fi
+          
+          # Baseband guard
+          if [[ "${{ inputs.baseband_guard }}" == "true" ]]; then
+            echo "CONFIG_BBG=y" >> arch/arm64/configs/gki_defconfig
+            curl -sSL https://github.com/cctv18/Baseband-guard/raw/master/setup.sh | bash
+            sed -i '/^config LSM$/,/^help$/{ /^[[:space:]]*default/ { /baseband_guard/! s/selinux/selinux,baseband_guard/ } }' security/Kconfig
+          fi
+          
+          echo "All configs added"
 
       - name: Build kernel
         run: |
           WORKDIR="$(pwd)"
-          cd kernel
-          export PATH="$WORKDIR/kernel/clang19/bin:$WORKDIR/kernel/build-tools/bin:$PATH"
-          export ARCH=arm64
-          export SUBARCH=arm64
+          cd "$GITHUB_WORKSPACE/kernel_workspace"
+          
+          export PATH="$WORKDIR/kernel_workspace/clang19/bin:$WORKDIR/kernel_workspace/build-tools/bin:$WORKDIR/kernel_workspace/rust/bin:$PATH"
+          export CCACHE_DIR="$HOME/.ccache_lokumkernel"
+          
+          cd common
+          
+          # Path remapping for 6.12 kernel Rust
+          COMMON_REAL_PATH=$(pwd -P)
+          ROOT_REAL_PATH=$(dirname "$COMMON_REAL_PATH")
+          
+          # Fake time for reproducible builds
+          wget -q https://raw.githubusercontent.com/cctv18/oppo_oplus_realme_sm8850/main/lib/libfakestat.so
+          wget -q https://raw.githubusercontent.com/cctv18/oppo_oplus_realme_sm8850/main/lib/libfaketimeMT.so
+          chmod 777 ./*.so
+          export FAKESTAT="2025-05-25 12:00:00"
+          export FAKETIME="@2025-05-25 13:00:00"
+          export PRELOAD_LIBS="$(pwd)/libfakestat.so $(pwd)/libfaketimeMT.so"
+          
+          REAL_CLANG_PATH="$WORKDIR/kernel_workspace/clang19/bin/clang"
+          
+          # cc-wrapper
+          cat > cc-wrapper << 'WRAPPER'
+          #!/bin/bash
+          export LD_PRELOAD="$PRELOAD_LIBS"
+          export FAKESTAT="$FAKESTAT"
+          export FAKETIME="$FAKETIME"
+          WRAPPER
+          echo "export PRELOAD_LIBS=\"$PRELOAD_LIBS\"" >> cc-wrapper
+          echo "export FAKESTAT=\"$FAKESTAT\"" >> cc-wrapper
+          echo "export FAKETIME=\"$FAKETIME\"" >> cc-wrapper
+          echo "ccache $REAL_CLANG_PATH \"\$@\"" >> cc-wrapper
+          chmod +x cc-wrapper
+          
+          # ld-wrapper
+          cat > ld-wrapper << 'WRAPPER'
+          #!/bin/bash
+          export LD_PRELOAD="$PRELOAD_LIBS"
+          export FAKESTAT="$FAKESTAT"
+          export FAKETIME="$FAKETIME"
+          WRAPPER
+          echo "export PRELOAD_LIBS=\"$PRELOAD_LIBS\"" >> ld-wrapper
+          echo "export FAKESTAT=\"$FAKESTAT\"" >> ld-wrapper
+          echo "export FAKETIME=\"$FAKETIME\"" >> ld-wrapper
+          echo 'ld.lld "$@"' >> ld-wrapper
+          chmod +x ld-wrapper
+          
+          # Environment
+          export RUSTC="rustc"
+          export BINDGEN="bindgen"
+          export LIBCLANG_PATH="$WORKDIR/kernel_workspace/clang19/lib"
+          
+          KCFLAGS=""
+          KCFLAGS+=" -fdebug-prefix-map=$ROOT_REAL_PATH=."
+          KCFLAGS+=" -fmacro-prefix-map=$ROOT_REAL_PATH=."
+          KCFLAGS+=" -ffile-prefix-map=$ROOT_REAL_PATH=."
+          KCFLAGS+=" -no-canonical-prefixes"
+          KCFLAGS+=" -O2"
+          KCFLAGS+=" -pipe"
+          KCFLAGS+=" -Wno-error"
+          KCFLAGS+=" -fno-stack-protector"
+          KCFLAGS+=" -D__ANDROID_COMMON_KERNEL__"
+          export KCFLAGS
+          
+          export HOSTCC=clang
+          export LD="ld.lld" HOSTLD=ld.lld AR=llvm-ar NM=llvm-nm AS=clang
+          export READELF=llvm-readelf OBJCOPY=llvm-objcopy OBJDUMP=llvm-objdump
+          export LLVM=1 LLVM_IAS=1
+          export ARCH=arm64 SUBARCH=arm64
           export CROSS_COMPILE=aarch64-linux-gnu-
-          export LLVM=1
-          export LLVM_IAS=1
           
-          echo "Compiler: $(clang --version | head -1)"
-          echo "LD: $(ld.lld --version | head -1)"
+          source "./_setup_env.sh" 2>/dev/null || true
           
-          make -j$(nproc) gki_defconfig
-          make -j$(nproc) Image
+          # Clean space
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL &
+          
+          # Build
+          make -j$(nproc) LLVM=1 ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- CC="clang" LD="ld.lld" O=out gki_defconfig &&
+          make -j$(nproc) LLVM=1 ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- CC="$(pwd)/cc-wrapper" LD="$(pwd)/ld-wrapper" O=out Image
+          
+          echo "Build complete!"
+          ccache -s
+          ls -lh out/arch/arm64/boot/Image
 
       - name: Package AnyKernel3
+        id: create_zip
         run: |
-          cd kernel
-          git clone --depth=1 https://github.com/osm0sis/AnyKernel3.git
+          cd "$GITHUB_WORKSPACE/kernel_workspace"
+          git clone --depth=1 https://github.com/cctv18/AnyKernel3.git
           rm -rf AnyKernel3/.git
-          cp out/arch/arm64/boot/Image AnyKernel3/
           cd AnyKernel3
-          zip -r ../Xiaomi-SM8850-LokumKernel-KSUN-SUSFS-DroidSpaces.zip ./*
-          echo "Package created"
+          cp ../common/out/arch/arm64/boot/Image .
+          if [[ ! -f Image ]]; then echo "Image not found!"; exit 1; fi
+          
+          AK3_NAME="AnyKernel3_LokumKernel_KSUN-SUSFS_${{ env.KERNEL_VERSION }}.${{ env.SUB_VERSION }}-Xiaomi-SM8850.zip"
+          zip -r "../$AK3_NAME" ./*
+          echo "ak3name=$AK3_NAME" >> $GITHUB_OUTPUT
+          echo "Package: $AK3_NAME"
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
-          name: Xiaomi-SM8850-Kernel
-          path: kernel/Xiaomi-SM8850-LokumKernel-KSUN-SUSFS-DroidSpaces.zip
+          name: ${{ steps.create_zip.outputs.ak3name }}
+          path: kernel_workspace/AnyKernel3_*.zip
