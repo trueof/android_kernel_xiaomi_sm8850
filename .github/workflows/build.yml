@@ -95,6 +95,18 @@ jobs:
           echo "All tools ready"
           clang19/bin/clang --version
           rust/bin/rustc --version
+          
+          # Fix KSU symlinks (replace with real copies for CI compatibility)
+          echo "Fixing KSU symlinks..."
+          rm -f common/drivers/kernelsu
+          cp -a KernelSU-Next/kernel common/drivers/kernelsu
+          # Fix internal symlink: kernel/include/uapi -> ../../uapi
+          if [ -L common/drivers/kernelsu/include/uapi ]; then
+            rm -f common/drivers/kernelsu/include/uapi
+            cp -a KernelSU-Next/uapi common/drivers/kernelsu/include/uapi
+          fi
+          ls common/drivers/kernelsu/include/uapi/app_profile.h
+          echo "KSU symlinks fixed"
 
       - name: Setup ccache
         run: |
