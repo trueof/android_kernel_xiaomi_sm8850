@@ -1,0 +1,149 @@
+name: Build Xiaomi SM8850 Kernel
+
+env:
+  TZ: Asia/Shanghai
+
+on:
+  workflow_dispatch:
+    inputs:
+      features:
+        description: 'Features to enable (comma-separated: droidspaces,bbr,network,rekernel,bbg)'
+        required: false
+        type: string
+        default: 'droidspaces,bbr,network,rekernel,bbg'
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Setup environment
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends binutils python3 libssl-dev libelf-dev flex bison bc pahole ccache
+          sudo apt-get install -y --no-install-recommends gcc-aarch64-linux-gnu
+
+      - name: Checkout kernel source
+        uses: actions/checkout@v4
+        with:
+          ref: '6.12.23-android16-5-lokumkernel-ksun-susfs-rc1'
+          path: kernel
+          fetch-depth: 1
+
+      - name: Checkout KernelSU-Next
+        uses: actions/checkout@v4
+        with:
+          repository: pershoot/KernelSU-Next
+          ref: dev-susfs
+          path: KernelSU-Next
+          fetch-depth: 1
+
+      - name: Verify KSU symlink
+        run: |
+          ls -la kernel/drivers/kernelsu
+          ls KernelSU-Next/kernel/Kbuild
+
+      - name: Download Android Clang 19
+        run: |
+          mkdir -p clang
+          wget -q https://github.com/nickel-lang/clang/releases/download/llvm-19.1.7/clang-19.1.7-linux.zip -O clang.zip || \
+          wget -q https://android.googlesource.com/platform/prebuilts/clang/host/linux-x86/+archive/refs/heads/main/clang-r530567b.tar.gz -O clang.tar.gz
+          if [ -f clang.tar.gz ]; then
+            mkdir -p clang
+            tar -xzf clang.tar.gz -C clang
+          else
+            unzip -q clang.zip -d clang
+          fi
+          clang/bin/clang --version
+
+      - name: Download DroidSpaces patches
+        run: |
+          cd kernel
+          curl -sL "https://raw.githubusercontent.com/cctv18/oppo_oplus_realme_sm8650/main/droidspaces_patch/fix_sysvipc_kabi_6_7_8.patch" -o /tmp/fix_sysvipc_kabi.patch
+          curl -sL "https://raw.githubusercontent.com/cctv18/oppo_oplus_realme_sm8650/main/droidspaces_patch/ntsync_compat_android14-6.1.patch" -o /tmp/ntsync_compat.patch
+          curl -sL "https://raw.githubusercontent.com/cctv18/oppo_oplus_realme_sm8650/main/droidspaces_patch/disable_module_crc_check.patch" -o /tmp/disable_module_crc_check.patch
+          patch -p1 -N -F 3 < /tmp/fix_sysvipc_kabi.patch || true
+          patch -p1 -N -F 3 < /tmp/ntsync_compat.patch || true
+          patch -p1 -N -F 3 < /tmp/disable_module_crc_check.patch || true
+          echo "DroidSpaces patches applied"
+
+      - name: Add DroidSpaces + optimization configs
+        run: |
+          cd kernel
+          cat >> arch/arm64/configs/xiaomi_sm8850_bootimg.fragment << 'EOF'
+          
+          # DroidSpaces container support
+          CONFIG_PID_NS=y
+          CONFIG_IPC_NS=y
+          CONFIG_SYSVIPC=y
+          CONFIG_DEVTMPFS=y
+          CONFIG_POSIX_MQUEUE=y
+          CONFIG_NETFILTER_XT_MATCH_ADDRTYPE=y
+          CONFIG_NETFILTER_XT_MATCH_RECENT=y
+          CONFIG_NTSYNC=y
+          CONFIG_TMPFS_XATTR=y
+          CONFIG_TMPFS_POSIX_ACL=y
+          
+          # O2 compile optimization
+          CONFIG_CC_OPTIMIZE_FOR_PERFORMANCE=y
+          
+          # BBR/Brutal TCP congestion algorithms
+          CONFIG_TCP_CONG_ADVANCED=y
+          CONFIG_TCP_CONG_BBR=y
+          CONFIG_TCP_CONG_CUBIC=y
+          CONFIG_TCP_CONG_BRUTAL=y
+          CONFIG_DEFAULT_TCP_CONG=cubic
+          
+          # Network enhancements
+          CONFIG_BPF_STREAM_PARSER=y
+          CONFIG_NETFILTER_XT_SET=y
+          CONFIG_IP_SET=y
+          CONFIG_IP_SET_MAX=65534
+          CONFIG_IP_SET_HASH_IP=y
+          CONFIG_IP_SET_HASH_NET=y
+          CONFIG_IP_SET_HASH_NETPORT=y
+          CONFIG_IP_SET_LIST_SET=y
+          CONFIG_IP6_NF_NAT=y
+          CONFIG_IP6_NF_TARGET_MASQUERADE=y
+          CONFIG_NETFILTER_XT_TARGET_MASQUERADE=y
+          CONFIG_NF_CONNTRACK_NETLINK=y
+          
+          # Re:Kernel + Baseband guard
+          CONFIG_REKERNEL=y
+          CONFIG_BBG=y
+          EOF
+          echo "Configs added"
+
+      - name: Merge defconfig
+        run: |
+          cd kernel
+          cat arch/arm64/configs/gki_defconfig arch/arm64/configs/xiaomi_sm8850_bootimg.fragment > /tmp/merged_defconfig
+          cp /tmp/merged_defconfig arch/arm64/configs/gki_defconfig
+          echo "Defconfig merged"
+
+      - name: Fix libbpf for clang compatibility
+        run: |
+          cd kernel
+          sed -i 's/override CFLAGS += -Werror -Wall/override CFLAGS += -Wno-error -Wall/' tools/lib/bpf/Makefile
+
+      - name: Build kernel
+        run: |
+          cd kernel
+          export PATH="$GITHUB_WORKSPACE/clang/bin:$PATH"
+          make -j$(nproc) LLVM=1 ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- gki_defconfig
+          make -j$(nproc) LLVM=1 ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- Image
+
+      - name: Package AnyKernel3
+        run: |
+          cd kernel
+          git clone --depth=1 https://github.com/osm0sis/AnyKernel3.git
+          rm -rf AnyKernel3/.git
+          cp out/arch/arm64/boot/Image AnyKernel3/
+          cd AnyKernel3
+          zip -r ../Xiaomi-SM8850-LokumKernel-KSUN-SUSFS-DroidSpaces.zip ./*
+          echo "Package created"
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: Xiaomi-SM8850-Kernel
+          path: kernel/Xiaomi-SM8850-LokumKernel-KSUN-SUSFS-DroidSpaces.zip
