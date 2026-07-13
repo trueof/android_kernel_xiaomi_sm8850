@@ -7,7 +7,7 @@ on:
   workflow_dispatch:
     inputs:
       features:
-        description: 'Features to enable (comma-separated: droidspaces,bbr,network,rekernel,bbg)'
+        description: 'Features to enable'
         required: false
         type: string
         default: 'droidspaces,bbr,network,rekernel,bbg'
@@ -19,8 +19,7 @@ jobs:
       - name: Setup environment
         run: |
           sudo apt-get update
-          sudo apt-get install -y --no-install-recommends binutils python3 libssl-dev libelf-dev flex bison bc pahole ccache
-          sudo apt-get install -y --no-install-recommends gcc-aarch64-linux-gnu
+          sudo apt-get install -y --no-install-recommends binutils python3 libssl-dev libelf-dev flex bison bc pahole ccache gcc-aarch64-linux-gnu aria2c
 
       - name: Checkout kernel source
         uses: actions/checkout@v4
@@ -42,21 +41,17 @@ jobs:
           ls -la kernel/drivers/kernelsu
           ls KernelSU-Next/kernel/Kbuild
 
-      - name: Download Android Clang 19
+      - name: Download clang toolchain + build-tools
         run: |
-          mkdir -p clang
-          # Use cctv18's proven clang toolchain
-          wget -q https://github.com/nickel-lang/clang/releases/download/llvm-19.1.7/clang-19.1.7-linux.zip -O clang.zip && \
-          unzip -q clang.zip -d clang && \
-          clang/bin/clang --version || \
-          (echo "Primary download failed, trying alternate..." && \
-           wget -q "https://github.com/nickel-lang/clang/releases/download/llvm-19.1.7/clang-19.1.7-linux.zip" -O clang.zip && \
-           unzip -q clang.zip -d clang && \
-           clang/bin/clang --version) || \
-          (echo "Using system clang" && \
-           ln -sf /usr/bin/clang clang/bin/clang && \
-           ln -sf /usr/bin/ld.lld clang/bin/ld.lld && \
-           clang/bin/clang --version)
+          cd kernel
+          aria2c -s16 -x16 -k1M https://github.com/cctv18/oneplus_sm8650_toolchain/releases/download/LLVM-Clang19-r536225/clang-r536225.zip -o clang.zip
+          mkdir -p clang19
+          unzip -q clang.zip -d clang19
+          rm -f clang.zip
+          aria2c -s16 -x16 -k1M https://github.com/cctv18/oneplus_sm8650_toolchain/releases/download/LLVM-Clang19-r536225/build-tools.zip -o build-tools.zip
+          unzip -q build-tools.zip
+          rm -f build-tools.zip
+          clang19/bin/clang --version
 
       - name: Download DroidSpaces patches
         run: |
@@ -130,10 +125,20 @@ jobs:
 
       - name: Build kernel
         run: |
+          WORKDIR="$(pwd)"
           cd kernel
-          export PATH="$GITHUB_WORKSPACE/clang/bin:$PATH"
-          make -j$(nproc) LLVM=1 ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- gki_defconfig
-          make -j$(nproc) LLVM=1 ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- Image
+          export PATH="$WORKDIR/kernel/clang19/bin:$WORKDIR/kernel/build-tools/bin:$PATH"
+          export ARCH=arm64
+          export SUBARCH=arm64
+          export CROSS_COMPILE=aarch64-linux-gnu-
+          export LLVM=1
+          export LLVM_IAS=1
+          
+          echo "Compiler: $(clang --version | head -1)"
+          echo "LD: $(ld.lld --version | head -1)"
+          
+          make -j$(nproc) gki_defconfig
+          make -j$(nproc) Image
 
       - name: Package AnyKernel3
         run: |
