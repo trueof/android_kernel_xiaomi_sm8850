@@ -107,12 +107,19 @@ jobs:
           fi
           # Remove external module Makefile (conflicts with in-tree Kbuild)
           rm -f common/drivers/kernelsu/Makefile
-          # Verify files exist
+          # Nuclear fix: copy uapi headers EVERYWHERE the compiler might look
+          cp common/drivers/kernelsu/include/uapi/app_profile.h common/drivers/kernelsu/policy/
+          cp common/drivers/kernelsu/include/klog.h common/drivers/kernelsu/feature/
+          cp common/drivers/kernelsu/include/klog.h common/drivers/kernelsu/core/
+          # Also create symlinks for good measure
+          ln -sf ../include/uapi common/drivers/kernelsu/policy/uapi 2>/dev/null || true
+          ln -sf ../include common/drivers/kernelsu/feature/include 2>/dev/null || true
+          ln -sf ../include common/drivers/kernelsu/core/include 2>/dev/null || true
+          # Verify
           ls common/drivers/kernelsu/include/uapi/app_profile.h
           ls common/drivers/kernelsu/include/klog.h
-          echo "KSU symlinks fixed"
-          # Debug: show include flags from Kbuild
-          grep "ccflags.*KSU_KERNEL_DIR" common/drivers/kernelsu/Kbuild
+          ls common/drivers/kernelsu/policy/app_profile.h
+          echo "KSU headers fixed"
 
       - name: Setup ccache
         run: |
