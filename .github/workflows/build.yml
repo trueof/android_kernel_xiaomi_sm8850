@@ -74,8 +74,8 @@ jobs:
           # Clone kernel source (LokumKernel for Xiaomi SM8850)
           git clone --depth=1 -b 6.12.23-android16-5-lokumkernel-ksun-susfs-rc1 https://github.com/LokumKernel-SM8850/android_kernel_xiaomi_sm8850.git common &
           
-          # Clone KernelSU-Next (for symlink)
-          git clone --depth=1 -b dev-susfs https://github.com/pershoot/KernelSU-Next.git KernelSU-Next &
+          # Clone KernelSU-Next (NOT shallow - need symlink resolution)
+          git clone -b dev-susfs https://github.com/pershoot/KernelSU-Next.git KernelSU-Next &
           
           # Download clang-r536225
           mkdir -p clang19
